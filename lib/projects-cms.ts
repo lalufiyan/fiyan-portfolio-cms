@@ -1,5 +1,7 @@
 import configPromise from "@payload-config"
 import { getPayload } from "payload"
+import { unstable_cache } from "next/cache"
+import { cache } from "react"
 
 import {
   getFeaturedProjects as getStaticFeaturedProjects,
@@ -16,6 +18,15 @@ import {
 } from "@/utils/image-association"
 import { sortProjectsByYear } from "@/utils/category-utils"
 import { type ProjectRichText } from "@/lib/project-rich-text"
+import { CACHE_TAGS } from "@/lib/cache-tags"
+import {
+  asMediaRecord,
+  mediaSizeUrl,
+  mediaSrc,
+  mediaUrl,
+  projectMediaVariantUrl,
+  withProjectImageVariants,
+} from "@/lib/media-url"
 
 export interface Project {
   id: number | string
@@ -33,7 +44,7 @@ export interface Project {
   seo?: ProjectSEO
 }
 
-export interface ProjectSEO {
+interface ProjectSEO {
   canonicalUrl?: string
   description?: string
   image?: string
@@ -56,7 +67,7 @@ export interface LandingProject extends Project {
   thumbnail?: ProjectImage
 }
 
-const cmsEnabled = Boolean(process.env.DATABASE_URL)
+const cmsEnabled = Boolean(process.env.DATABASE_URL?.trim())
 const optimizedProjectThumbnailBySlug = new Map<string, string>([
   ["amok-research", "/project-thumbnails/amok-research.webp"],
   ["balakosa-coffee", "/project-thumbnails/balakosa-coffee.webp"],
@@ -99,92 +110,19 @@ const staticMediaUrl = (record: { filename?: string; url?: string }) => {
   return filename ? staticImageByFilename.get(filename) : undefined
 }
 
+/**
+ * Static seed media lives in `public/projects/...`; the CMS stores it by
+ * filename, so resolve the static path before any CMS/R2 URL.
+ */
+const staticAwareMediaUrl = (media: unknown): string => {
+  const record = asMediaRecord(media)
+
+  return (record ? staticMediaUrl(record) : undefined) || mediaUrl(media)
+}
+
 const optimizedProjectThumbnailUrl = (projectSlug: string) => optimizedProjectThumbnailBySlug.get(projectSlug)
 
-const staticProjectMediaVariantUrl = (src: string, variant: "detail" | "lightbox" | "thumb") => {
-  if (!src.startsWith("/projects/")) {
-    return undefined
-  }
-
-  const parts = src.split("/")
-  const projectSlug = parts[2]
-  const filename = parts.at(-1)
-
-  if (!projectSlug || !filename) {
-    return undefined
-  }
-
-  const basename = filename.replace(/\.[^.]+$/, "")
-  return `/project-media/${projectSlug}/${basename}-${variant}.webp`
-}
-
-const withOptimizedStaticImageVariants = (image: StaticProjectImage): ProjectImage => ({
-  ...image,
-  thumbnailSrc: image.thumbnailSrc || staticProjectMediaVariantUrl(image.src, "thumb") || image.src,
-  detailSrc: image.detailSrc || staticProjectMediaVariantUrl(image.src, "detail") || image.src,
-  lightboxSrc: image.lightboxSrc || staticProjectMediaVariantUrl(image.src, "lightbox") || image.src,
-})
-
-const mediaUrl = (media: unknown): string => {
-  if (!media || typeof media !== "object") {
-    return ""
-  }
-
-  const record = media as { thumbnailURL?: string; url?: string; filename?: string; prefix?: string }
-  const staticUrl = staticMediaUrl(record)
-  if (staticUrl) {
-    return staticUrl
-  }
-
-  if (record.url) {
-    return record.url
-  }
-
-  if (record.thumbnailURL) {
-    return record.thumbnailURL
-  }
-
-  const publicUrl = process.env.R2_PUBLIC_URL?.replace(/\/$/, "")
-  if (!publicUrl || !record.filename) {
-    return ""
-  }
-
-  const prefix = record.prefix ? `${record.prefix}/` : ""
-  return `${publicUrl}/${prefix}${record.filename}`
-}
-
-const mediaSizeUrl = (media: unknown, sizeName: string): string => {
-  if (!media || typeof media !== "object") {
-    return ""
-  }
-
-  const record = media as {
-    prefix?: string
-    sizes?: Record<string, { filename?: string; url?: string }>
-  }
-  const size = record.sizes?.[sizeName]
-
-  if (size?.url) {
-    return size.url
-  }
-
-  if (size?.filename) {
-    return mediaUrl({ filename: size.filename, prefix: record.prefix })
-  }
-
-  return ""
-}
-
-const thumbnailMediaUrl = (media: unknown): string => {
-  if (!media || typeof media !== "object") {
-    return ""
-  }
-
-  const record = media as { thumbnailURL?: string }
-  return mediaSizeUrl(media, "thumbnail") || record.thumbnailURL || mediaUrl(media)
-}
-
-const seoMediaUrl = (media: unknown): string => mediaSizeUrl(media, "og") || mediaSizeUrl(media, "detail") || mediaUrl(media)
+const seoMediaUrl = (media: unknown): string => mediaSrc(media, ["og", "detail"]) || staticAwareMediaUrl(media)
 
 const toSEO = (seo: unknown): ProjectSEO | undefined => {
   if (!seo || typeof seo !== "object") {
@@ -228,14 +166,14 @@ const toProjectImage = (media: unknown, projectSlug: string, index = 0): Project
     url?: string
   }
 
-  const src = mediaUrl(record)
+  const src = staticAwareMediaUrl(record)
   if (!src) {
     return null
   }
   const staticSrc = staticMediaUrl(record)
-  const staticThumbnailSrc = staticSrc ? staticProjectMediaVariantUrl(staticSrc, "thumb") : undefined
-  const staticDetailSrc = staticSrc ? staticProjectMediaVariantUrl(staticSrc, "detail") : undefined
-  const staticLightboxSrc = staticSrc ? staticProjectMediaVariantUrl(staticSrc, "lightbox") : undefined
+  const staticThumbnailSrc = staticSrc ? projectMediaVariantUrl(staticSrc, "thumb") : undefined
+  const staticDetailSrc = staticSrc ? projectMediaVariantUrl(staticSrc, "detail") : undefined
+  const staticLightboxSrc = staticSrc ? projectMediaVariantUrl(staticSrc, "lightbox") : undefined
 
   return {
     id: String(record.id),
@@ -257,8 +195,8 @@ const toProject = (doc: any): Project => ({
   id: doc.id,
   title: doc.title,
   description: doc.description,
-  category: doc.category,
-  image: mediaUrl(doc.thumbnail),
+  category: typeof doc.category === "string" ? doc.category : "",
+  image: staticAwareMediaUrl(doc.thumbnail),
   slug: doc.slug,
   year: doc.year,
   role: doc.role || undefined,
@@ -284,8 +222,13 @@ const toProjectWithThumbnail = (doc: any): ProjectWithThumbnail => {
 
   return {
     ...project,
+    // Listing surface: the static card thumbnail, then the CMS gallery/thumbnail
+    // derivative. The full-resolution original is only a last resort.
     thumbnailUrl:
-      optimizedProjectThumbnailUrl(project.slug) || thumbnailMediaUrl(doc.thumbnail) || thumbnail?.src || project.image || "/placeholder.svg",
+      optimizedProjectThumbnailUrl(project.slug) ||
+      thumbnail?.thumbnailSrc ||
+      project.image ||
+      "/placeholder.svg",
   }
 }
 
@@ -309,8 +252,8 @@ const getPayloadClient = async () => getPayload({ config: configPromise })
 const getStaticLandingProjects = (): LandingProject[] =>
   sortProjectsByYear(getStaticFeaturedProjects()).map((project) => {
     const thumbnail = getStaticProjectThumbnail(project.slug)
-    const optimizedThumbnail = thumbnail ? withOptimizedStaticImageVariants(thumbnail) : undefined
-    const images = getStaticProjectImages(project.slug).map(withOptimizedStaticImageVariants)
+    const optimizedThumbnail = thumbnail ? withProjectImageVariants(thumbnail) : undefined
+    const images = getStaticProjectImages(project.slug).map(withProjectImageVariants)
 
     return {
       ...project,
@@ -326,7 +269,12 @@ const getStaticProjectsWithThumbnails = (): ProjectWithThumbnail[] =>
 
     return {
       ...project,
-      thumbnailUrl: optimizedProjectThumbnailUrl(project.slug) || thumbnail?.src || project.image || "/placeholder.svg",
+      thumbnailUrl:
+        optimizedProjectThumbnailUrl(project.slug) ||
+        (thumbnail ? projectMediaVariantUrl(thumbnail.src, "thumb") : undefined) ||
+        thumbnail?.src ||
+        project.image ||
+        "/placeholder.svg",
     }
   })
 
@@ -335,14 +283,10 @@ const getStaticProjectWithImagesBySlug = (
 ): { images: ProjectImage[]; project: Project } | undefined => {
   const project = getStaticProjectBySlug(slug)
 
-  return project ? { project, images: getStaticProjectImages(slug).map(withOptimizedStaticImageVariants) } : undefined
+  return project ? { project, images: getStaticProjectImages(slug).map(withProjectImageVariants) } : undefined
 }
 
-export async function getAllProjects(): Promise<Project[]> {
-  if (!cmsEnabled) {
-    return staticProjects
-  }
-
+const readAllProjects = async (): Promise<Project[]> => {
   const payload = await getPayloadClient()
   const result = await payload.find({
     collection: "projects",
@@ -354,37 +298,23 @@ export async function getAllProjects(): Promise<Project[]> {
   return result.docs.length > 0 ? result.docs.map(toProject) : staticProjects
 }
 
-export async function getFeaturedProjects(): Promise<Project[]> {
+const cachedAllProjects = unstable_cache(readAllProjects, ["projects:all"], { tags: [CACHE_TAGS.projects] })
+
+export const getAllProjects = cache(async (): Promise<Project[]> => {
   if (!cmsEnabled) {
-    return getStaticFeaturedProjects()
+    return staticProjects
   }
 
-  const payload = await getPayloadClient()
-  const result = await payload.find({
-    collection: "projects",
-    depth: 2,
-    limit: 100,
-    where: {
-      featured: {
-        equals: true,
-      },
-    },
-  })
+  return cachedAllProjects()
+})
 
-  return result.docs.length > 0 ? result.docs.map(toProject) : getStaticFeaturedProjects()
-}
-
-export async function getLandingProjects(options: { draft?: boolean } = {}): Promise<LandingProject[]> {
-  if (!cmsEnabled) {
-    return getStaticLandingProjects()
-  }
-
+const readLandingProjects = async (draft: boolean): Promise<LandingProject[]> => {
   const payload = await getPayloadClient()
   const homePage = (await payload.findGlobal({
     slug: "home-page",
-    draft: Boolean(options.draft),
+    draft,
     depth: 2,
-    overrideAccess: Boolean(options.draft),
+    overrideAccess: draft,
   })) as {
     fallbackToFeatured?: boolean | null
     landingProjects?: unknown[]
@@ -405,10 +335,10 @@ export async function getLandingProjects(options: { draft?: boolean } = {}): Pro
 
   const result = await payload.find({
     collection: "projects",
-    draft: Boolean(options.draft),
+    draft,
     depth: 2,
     limit: 100,
-    overrideAccess: Boolean(options.draft),
+    overrideAccess: draft,
     where: {
       featured: {
         equals: true,
@@ -419,11 +349,20 @@ export async function getLandingProjects(options: { draft?: boolean } = {}): Pro
   return result.docs.length > 0 ? sortProjectsByYear(result.docs.map(toLandingProject)) : getStaticLandingProjects()
 }
 
-export async function getAllProjectsWithThumbnails(): Promise<ProjectWithThumbnail[]> {
+// Keep the editor's ordered slide selection request-local. Next's persistent tag
+// cache can serve one stale homepage render after a Payload route-handler save.
+const getLandingProjectsByDraft = cache(async (draft: boolean): Promise<LandingProject[]> => {
   if (!cmsEnabled) {
-    return getStaticProjectsWithThumbnails()
+    return getStaticLandingProjects()
   }
 
+  return readLandingProjects(draft)
+})
+
+export const getLandingProjects = (options: { draft?: boolean } = {}) =>
+  getLandingProjectsByDraft(Boolean(options.draft))
+
+const readAllProjectsWithThumbnails = async (): Promise<ProjectWithThumbnail[]> => {
   const payload = await getPayloadClient()
   const result = await payload.find({
     collection: "projects",
@@ -434,41 +373,29 @@ export async function getAllProjectsWithThumbnails(): Promise<ProjectWithThumbna
   return result.docs.length > 0 ? result.docs.map(toProjectWithThumbnail) : getStaticProjectsWithThumbnails()
 }
 
-export async function getProjectBySlug(slug: string): Promise<Project | undefined> {
+const cachedAllProjectsWithThumbnails = unstable_cache(readAllProjectsWithThumbnails, ["projects:thumbnails"], {
+  tags: [CACHE_TAGS.projects],
+})
+
+export const getAllProjectsWithThumbnails = cache(async (): Promise<ProjectWithThumbnail[]> => {
   if (!cmsEnabled) {
-    return getStaticProjectBySlug(slug)
+    return getStaticProjectsWithThumbnails()
   }
 
-  const payload = await getPayloadClient()
-  const result = await payload.find({
-    collection: "projects",
-    depth: 2,
-    limit: 1,
-    where: {
-      slug: {
-        equals: slug,
-      },
-    },
-  })
+  return cachedAllProjectsWithThumbnails()
+})
 
-  return result.docs[0] ? toProject(result.docs[0]) : getStaticProjectBySlug(slug)
-}
-
-export async function getProjectWithImagesBySlug(
+const readProjectWithImagesBySlug = async (
   slug: string,
-  options: { draft?: boolean } = {},
-): Promise<{ images: ProjectImage[]; project: Project } | undefined> {
-  if (!cmsEnabled) {
-    return getStaticProjectWithImagesBySlug(slug)
-  }
-
+  draft: boolean,
+): Promise<{ images: ProjectImage[]; project: Project } | undefined> => {
   const payload = await getPayloadClient()
   const result = await payload.find({
     collection: "projects",
-    draft: Boolean(options.draft),
+    draft,
     depth: 2,
     limit: 1,
-    overrideAccess: Boolean(options.draft),
+    overrideAccess: draft,
     where: {
       slug: {
         equals: slug,
@@ -490,12 +417,37 @@ export async function getProjectWithImagesBySlug(
   }
 }
 
-export async function getProjectCategories(): Promise<string[]> {
+const readPublishedProjectWithImagesBySlug = (slug: string) => readProjectWithImagesBySlug(slug, false)
+
+const cachedProjectWithImagesBySlug = unstable_cache(readPublishedProjectWithImagesBySlug, ["projects:with-images"], {
+  tags: [CACHE_TAGS.projects],
+})
+
+const getProjectWithImagesByDraft = cache(
+  async (slug: string, draft: boolean): Promise<{ images: ProjectImage[]; project: Project } | undefined> => {
+    if (!cmsEnabled) {
+      return getStaticProjectWithImagesBySlug(slug)
+    }
+
+    return draft ? readProjectWithImagesBySlug(slug, true) : cachedProjectWithImagesBySlug(slug)
+  },
+)
+
+export const getProjectWithImagesBySlug = (slug: string, options: { draft?: boolean } = {}) =>
+  getProjectWithImagesByDraft(slug, Boolean(options.draft))
+
+export const getProjectCategories = cache(async (): Promise<string[]> => {
   if (!cmsEnabled) {
     return getStaticProjectCategories()
   }
 
   const projects = await getAllProjects()
-  const categories = Array.from(new Set(projects.map((project) => project.category.trim())))
+  const categories = Array.from(
+    new Set(
+      projects
+        .map((project) => (typeof project.category === "string" ? project.category.trim() : ""))
+        .filter(Boolean),
+    ),
+  )
   return ["all", ...categories.sort()]
-}
+})

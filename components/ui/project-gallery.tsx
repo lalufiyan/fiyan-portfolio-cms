@@ -1,12 +1,13 @@
 "use client"
 
-import { AnimatePresence, motion } from "framer-motion"
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { ChevronLeft, ChevronRight, Play, X } from "lucide-react"
 import Image from "next/image"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { cn } from "@/lib/utils"
 import type { ProjectImage } from "@/lib/projects-cms"
+import { projectMediaVariantUrl } from "@/lib/media-url"
 
 interface ProjectGalleryProps {
   className?: string
@@ -15,6 +16,10 @@ interface ProjectGalleryProps {
 
 export function ProjectGallery({ className, images }: ProjectGalleryProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const prefersReducedMotion = useReducedMotion()
   const isOpen = selectedIndex !== null
   const currentImage = selectedIndex !== null ? images[selectedIndex] : null
 
@@ -23,9 +28,24 @@ export function ProjectGallery({ className, images }: ProjectGalleryProps) {
       return
     }
 
+    closeButtonRef.current?.focus()
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setSelectedIndex(null)
+      }
+
+      if (event.key === "Tab") {
+        const controls = overlayRef.current?.querySelectorAll<HTMLButtonElement>("button")
+        if (!controls?.length) return
+        const first = controls[0]
+        const last = controls[controls.length - 1]
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault()
+          last.focus()
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault()
+          first.focus()
+        }
       }
 
       if (event.key === "ArrowLeft") {
@@ -67,15 +87,17 @@ export function ProjectGallery({ className, images }: ProjectGalleryProps) {
           >
             <button
               type="button"
-              onClick={() => setSelectedIndex(index)}
+              onClick={(event) => {
+                triggerRef.current = event.currentTarget
+                setSelectedIndex(index)
+              }}
               className="group relative block aspect-square w-full overflow-hidden rounded-lg bg-neutral-100 outline outline-1 -outline-offset-1 outline-black/5 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black"
               aria-label={`Open ${image.caption || image.alt}`}
             >
               <Image
-                src={image.thumbnailSrc || image.detailSrc || image.src || "/placeholder.svg"}
+                src={image.thumbnailSrc || projectMediaVariantUrl(image.src, "thumb") || image.src || "/placeholder.svg"}
                 alt=""
                 fill
-                loading="eager"
                 sizes="(min-width: 1280px) 12vw, (min-width: 768px) 22vw, 45vw"
                 className="object-cover transition duration-500 group-hover:scale-[1.04]"
               />
@@ -95,12 +117,13 @@ export function ProjectGallery({ className, images }: ProjectGalleryProps) {
         ))}
       </div>
 
-      <AnimatePresence>
+      <AnimatePresence onExitComplete={() => triggerRef.current?.focus()}>
         {isOpen && currentImage && (
           <motion.div
-            initial={{ opacity: 0 }}
+            ref={overlayRef}
+            initial={prefersReducedMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-5 backdrop-blur-md sm:p-10"
             onClick={() => setSelectedIndex(null)}
             role="dialog"
@@ -108,6 +131,7 @@ export function ProjectGallery({ className, images }: ProjectGalleryProps) {
             aria-label={currentImage.caption || currentImage.alt}
           >
             <button
+              ref={closeButtonRef}
               type="button"
               onClick={() => setSelectedIndex(null)}
               className="absolute right-5 top-5 z-10 flex size-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
@@ -144,10 +168,10 @@ export function ProjectGallery({ className, images }: ProjectGalleryProps) {
             )}
 
             <motion.figure
-              initial={{ opacity: 0, scale: 0.965, y: 14 }}
+              initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.965, y: 14 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.965, y: 14 }}
-              transition={{ duration: 0.28, ease: "easeOut" }}
+              exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, scale: 0.965, y: 14 }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.28, ease: "easeOut" }}
               className="relative flex max-h-[88vh] w-full max-w-6xl flex-col items-center"
               onClick={(event) => event.stopPropagation()}
             >
@@ -155,12 +179,15 @@ export function ProjectGallery({ className, images }: ProjectGalleryProps) {
                 <Image
                   src={
                     currentImage.type === "video"
-                      ? currentImage.src || "/placeholder.svg"
-                      : currentImage.lightboxSrc || currentImage.detailSrc || currentImage.src || "/placeholder.svg"
+                      ? currentImage.lightboxSrc || currentImage.src || "/placeholder.svg"
+                      : currentImage.lightboxSrc ||
+                        projectMediaVariantUrl(currentImage.src, "lightbox") ||
+                        currentImage.detailSrc ||
+                        currentImage.src ||
+                        "/placeholder.svg"
                   }
                   alt={currentImage.alt}
                   fill
-                  loading="eager"
                   sizes="(min-width: 1280px) 72rem, 100vw"
                   className="object-contain"
                   unoptimized={currentImage.type === "video"}

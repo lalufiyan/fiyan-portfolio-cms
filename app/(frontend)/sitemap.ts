@@ -4,7 +4,7 @@ import { getAllProjects } from "@/lib/projects-cms"
 import { getSiteSettings } from "@/lib/site-settings"
 import { absoluteURL } from "@/lib/site-url"
 
-export const dynamic = "force-dynamic"
+export const revalidate = 300
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [settings, projects] = await Promise.all([getSiteSettings(), getAllProjects()])

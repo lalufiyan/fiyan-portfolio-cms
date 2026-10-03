@@ -6,17 +6,19 @@ import Image from "next/image"
 import Link from "next/link"
 
 import type { ProjectWithThumbnail } from "@/lib/projects-cms"
+import type { ProjectsPageSettings } from "@/lib/projects-page"
 import { projectMatchesCategory, sortProjectsByYear } from "@/utils/category-utils"
 
 interface ProjectsClientProps {
   categories: string[]
   projects: ProjectWithThumbnail[]
+  settings: ProjectsPageSettings
 }
 
 const formatCategory = (category: string) =>
   category === "all" ? "All" : category.charAt(0).toUpperCase() + category.slice(1)
 
-export function ProjectsClient({ categories, projects }: ProjectsClientProps) {
+export function ProjectsClient({ categories, projects, settings }: ProjectsClientProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
 
   const filteredProjects = sortProjectsByYear(
@@ -37,15 +39,12 @@ export function ProjectsClient({ categories, projects }: ProjectsClientProps) {
             Home
           </Link>
           <p className="mb-3 font-mono text-sm font-semibold uppercase tracking-wide text-neutral-400 sm:text-xs">
-            Project Archive
+            {settings.eyebrow}
           </p>
           <h1 className="mb-5 max-w-[12ch] text-balance text-5xl font-semibold tracking-tight text-black sm:text-6xl">
-            Projects
+            {settings.heading}
           </h1>
-          <p className="max-w-[62ch] text-lg text-pretty text-neutral-600 sm:text-base">
-            A focused archive of strategy, communications, campaign, and event work. Each entry opens into a text-led
-            project view with the same media and captions used throughout the portfolio.
-          </p>
+          <p className="max-w-[62ch] text-lg text-pretty text-neutral-600 sm:text-base">{settings.description}</p>
         </div>
 
         <div className="mb-10 flex max-w-full flex-wrap gap-2" aria-label="Filter projects by category">
@@ -93,7 +92,7 @@ export function ProjectsClient({ categories, projects }: ProjectsClientProps) {
                       src={project.thumbnailUrl || "/placeholder.svg"}
                       alt=""
                       fill
-                      loading="eager"
+                      priority={index === 0}
                       sizes="(min-width: 1280px) 25vw, (min-width: 768px) 45vw, 100vw"
                       className="object-cover transition duration-500 group-hover:scale-[1.035]"
                     />

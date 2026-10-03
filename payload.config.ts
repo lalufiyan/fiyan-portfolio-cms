@@ -13,6 +13,7 @@ import { Media } from "./collections/Media.ts"
 import { Projects } from "./collections/Projects.ts"
 import { Users } from "./collections/Users.ts"
 import { HomePage } from "./globals/HomePage.ts"
+import { ProjectsPage } from "./globals/ProjectsPage.ts"
 import { SiteSettings } from "./globals/SiteSettings.ts"
 import { authenticated, publicRead } from "./collections/access.ts"
 import { richTextEditor } from "./lib/payload-rich-text-editor.ts"
@@ -21,10 +22,56 @@ import { absoluteURL } from "./lib/site-url.ts"
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 
-const r2Bucket = process.env.R2_BUCKET || ""
-const r2Endpoint = process.env.R2_ENDPOINT || ""
-const r2AccessKeyId = process.env.R2_ACCESS_KEY_ID || ""
-const r2SecretAccessKey = process.env.R2_SECRET_ACCESS_KEY || ""
+const env = process.env
+
+const DEV_PAYLOAD_SECRET = "dev-only-payload-secret-change-me"
+
+// Local development can render the static fallback without a database.
+const cmsEnabled = Boolean(env.DATABASE_URL?.trim())
+
+const r2Bucket = env.R2_BUCKET?.trim() || ""
+const r2Endpoint = env.R2_ENDPOINT?.trim() || ""
+const r2AccessKeyId = env.R2_ACCESS_KEY_ID?.trim() || ""
+const r2SecretAccessKey = env.R2_SECRET_ACCESS_KEY?.trim() || ""
+const r2PublicUrl = env.R2_PUBLIC_URL?.trim() || ""
+
+const r2StorageEnabled = Boolean(r2Bucket && r2Endpoint && r2AccessKeyId && r2SecretAccessKey)
+const isProduction = env.NODE_ENV === "production"
+
+// CI explicitly opts into a credential-free static build. Next does not expose
+// a reliable build-phase marker in every page-data worker, so deployment and
+// runtime processes otherwise share the same strict production validation.
+const isStaticCiBuild = Boolean(env.CI) && env.CMS_STATIC_BUILD === "1" && !env.VERCEL && !cmsEnabled
+
+if (isProduction && !isStaticCiBuild) {
+  if (env.PAYLOAD_SECRET === DEV_PAYLOAD_SECRET) {
+    throw new Error("PAYLOAD_SECRET is still the development placeholder. Generate a real secret before deploying.")
+  }
+
+  const missing = [
+    ["DATABASE_URL", env.DATABASE_URL],
+    ["PAYLOAD_SECRET", env.PAYLOAD_SECRET],
+    ["NEXT_PUBLIC_SITE_URL", env.NEXT_PUBLIC_SITE_URL],
+    ["R2_BUCKET", r2Bucket],
+    ["R2_ENDPOINT", r2Endpoint],
+    ["R2_ACCESS_KEY_ID", r2AccessKeyId],
+    ["R2_SECRET_ACCESS_KEY", r2SecretAccessKey],
+    ["R2_PUBLIC_URL", r2PublicUrl],
+  ]
+    .filter(([, value]) => !value?.trim())
+    .map(([name]) => name)
+
+  if (missing.length > 0) {
+    throw new Error(`Missing required production environment variables: ${missing.join(", ")}`)
+  }
+}
+
+// A partially configured R2 silently drops media on local disk, which is hard to spot.
+if (!r2StorageEnabled && (r2Bucket || r2Endpoint || r2AccessKeyId || r2SecretAccessKey)) {
+  console.warn(
+    "[payload.config] Partial R2 configuration: set R2_BUCKET, R2_ENDPOINT, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY to store media in R2. Falling back to local uploads.",
+  )
+}
 
 const titleFromDoc = (doc: unknown) => {
   if (!doc || typeof doc !== "object") {
@@ -103,11 +150,11 @@ export default buildConfig({
     user: Users.slug,
   },
   collections: [Users, Media, Projects, Articles],
-  globals: [HomePage, SiteSettings],
+  globals: [HomePage, SiteSettings, ProjectsPage],
   editor: richTextEditor,
   db: postgresAdapter({
     pool: {
-      connectionString: process.env.DATABASE_URL || "postgres://payload:payload@127.0.0.1:5432/fiyan_portfolio",
+      connectionString: env.DATABASE_URL?.trim() || "postgres://payload:payload@127.0.0.1:5432/fiyan_portfolio",
     },
   }),
   plugins: [
@@ -146,7 +193,7 @@ export default buildConfig({
       uploadsCollection: "media",
     }),
     s3Storage({
-      enabled: Boolean(r2Bucket && r2Endpoint && r2AccessKeyId && r2SecretAccessKey),
+      enabled: r2StorageEnabled,
       collections: {
         media: {
           prefix: "portfolio",
@@ -165,7 +212,7 @@ export default buildConfig({
       },
     }),
   ],
-  secret: process.env.PAYLOAD_SECRET || "dev-only-payload-secret-change-me",
+  secret: env.PAYLOAD_SECRET || DEV_PAYLOAD_SECRET,
   folders: {
     fieldName: "payloadFolder",
   },

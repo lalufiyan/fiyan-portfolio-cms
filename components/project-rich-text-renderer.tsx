@@ -3,6 +3,7 @@ import Image from "next/image"
 import Link from "next/link"
 
 import type { ProjectRichText } from "@/lib/project-rich-text"
+import { mediaSizeUrl, mediaUrl } from "@/lib/media-url"
 import { cn } from "@/lib/utils"
 
 type MediaValue = {
@@ -44,41 +45,6 @@ type BlockConverterArgs = {
   node: unknown
 }
 
-const publicR2Url = process.env.R2_PUBLIC_URL?.replace(/\/$/, "")
-
-const mediaUrl = (media: unknown, sizeName?: "detail" | "gallery" | "lightbox" | "thumbnail") => {
-  if (!media || typeof media !== "object") {
-    return ""
-  }
-
-  const record = media as MediaValue
-  const size = sizeName ? record.sizes?.[sizeName] : undefined
-
-  if (size?.url) {
-    return size.url
-  }
-
-  if (size?.filename && publicR2Url) {
-    const prefix = record.prefix ? `${record.prefix}/` : ""
-    return `${publicR2Url}/${prefix}${size.filename}`
-  }
-
-  if (record.url) {
-    return record.url
-  }
-
-  if (record.thumbnailURL) {
-    return record.thumbnailURL
-  }
-
-  if (record.filename && publicR2Url) {
-    const prefix = record.prefix ? `${record.prefix}/` : ""
-    return `${publicR2Url}/${prefix}${record.filename}`
-  }
-
-  return ""
-}
-
 const getBlockFields = (node: unknown): BlockFields => {
   if (!node || typeof node !== "object" || !("fields" in node)) {
     return {}
@@ -92,7 +58,7 @@ const projectRichTextConverters: JSXConvertersFunction = ({ defaultConverters })
   blocks: {
     imageFeature: ({ node }: BlockConverterArgs) => {
       const fields = getBlockFields(node)
-      const src = mediaUrl(fields.image, "detail") || mediaUrl(fields.image)
+      const src = mediaSizeUrl(fields.image, "detail") || mediaUrl(fields.image)
 
       if (!src) {
         return null

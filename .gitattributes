@@ -1,0 +1,3 @@
+# Normalize line endings: store as LF in the repo, check out as LF everywhere.
+# Keeps git status clean under WSL/Linux while the repo stays LF-normalized.
+* text=auto eol=lf

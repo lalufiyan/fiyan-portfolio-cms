@@ -40,6 +40,18 @@ export const SiteSettings: GlobalConfig = {
               required: true,
             },
             {
+              name: "brandMark",
+              label: "Brand mark",
+              type: "upload",
+              relationTo: "media",
+              displayPreview: true,
+              admin: {
+                description:
+                  "Small image or logo shown at the top of the portfolio sidebar. Leave empty to use the gradient mark.",
+                sortOptions: "-updatedAt",
+              },
+            },
+            {
               name: "description",
               type: "textarea",
             },

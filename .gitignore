@@ -29,3 +29,11 @@ tsconfig.tsbuildinfo
 # User specified to ignore
 .eslintrc.json
 .vercel
+.env*
+
+# Browser test artifacts
+/test-results/
+/playwright-report/
+
+# Local disk uploads (Payload storage when R2 is not configured)
+/media/

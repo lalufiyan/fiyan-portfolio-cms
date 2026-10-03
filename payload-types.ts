@@ -104,10 +104,12 @@ export interface Config {
   globals: {
     'home-page': HomePage;
     'site-settings': SiteSetting;
+    'projects-page': ProjectsPage;
   };
   globalsSelect: {
     'home-page': HomePageSelect<false> | HomePageSelect<true>;
     'site-settings': SiteSettingsSelect<false> | SiteSettingsSelect<true>;
+    'projects-page': ProjectsPageSelect<false> | ProjectsPageSelect<true>;
   };
   locale: null;
   widgets: {
@@ -211,7 +213,6 @@ export interface Media {
    * Used by the legacy import to preserve project gallery ordering.
    */
   order?: number | null;
-  prefix?: string | null;
   payloadFolder?: (number | null) | FolderInterface;
   updatedAt: string;
   createdAt: string;
@@ -330,7 +331,7 @@ export interface Project {
   role?: string | null;
   client?: string | null;
   /**
-   * When enabled, this project appears in the homepage slide presentation.
+   * Used on the homepage only when Home Page -> Landing page projects is empty and "Use featured projects when empty" is enabled. Selecting projects there always takes precedence.
    */
   featured?: boolean | null;
   publishedAt?: string | null;
@@ -704,7 +705,6 @@ export interface MediaSelect<T extends boolean = true> {
   projectSlug?: T;
   featured?: T;
   order?: T;
-  prefix?: T;
   payloadFolder?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -979,9 +979,12 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
 export interface HomePage {
   id: number;
   /**
-   * Choose and order projects for the homepage slides. Leave empty to use projects marked as landing page slides.
+   * Choose and order the projects shown as homepage slides. Leave empty to fall back to featured projects unless the fallback below is turned off. Draft projects can be selected, but they only render in preview until they are published.
    */
   landingProjects?: (number | Project)[] | null;
+  /**
+   * When no landing page projects are selected, fill the homepage with featured projects. Turning this off with an empty selection blocks publishing.
+   */
   fallbackToFeatured?: boolean | null;
   _status?: ('draft' | 'published') | null;
   updatedAt?: string | null;
@@ -998,6 +1001,10 @@ export interface SiteSetting {
   eyebrow?: string | null;
   ownerName: string;
   siteName: string;
+  /**
+   * Small image or logo shown at the top of the portfolio sidebar. Leave empty to use the gradient mark.
+   */
+  brandMark?: (number | null) | Media;
   description?: string | null;
   email?: string | null;
   location?: string | null;
@@ -1035,6 +1042,26 @@ export interface SiteSetting {
   createdAt?: string | null;
 }
 /**
+ * Eyebrow, heading, and description shown at the top of the project archive.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "projects-page".
+ */
+export interface ProjectsPage {
+  id: number;
+  /**
+   * Small label above the heading.
+   */
+  eyebrow?: string | null;
+  heading?: string | null;
+  /**
+   * Opening paragraph under the heading.
+   */
+  description?: string | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "home-page_select".
  */
@@ -1054,6 +1081,7 @@ export interface SiteSettingsSelect<T extends boolean = true> {
   eyebrow?: T;
   ownerName?: T;
   siteName?: T;
+  brandMark?: T;
   description?: T;
   email?: T;
   location?: T;
@@ -1086,6 +1114,18 @@ export interface SiteSettingsSelect<T extends boolean = true> {
         image?: T;
         siteUrl?: T;
       };
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "projects-page_select".
+ */
+export interface ProjectsPageSelect<T extends boolean = true> {
+  eyebrow?: T;
+  heading?: T;
+  description?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;

@@ -13,8 +13,7 @@ export interface ProjectImage {
   lightboxSrc?: string
 }
 
-// In-memory database of project images and videos
-// In a production app, this would likely come from a database or API
+// Legacy seed and CMS-free fallback media. Production project records live in Payload.
 export const projectImages: ProjectImage[] = [
   // Siglo Sky Lounge images
   {
@@ -446,6 +445,7 @@ export const projectImages: ProjectImage[] = [
   {
     id: "switch-on-1",
     src: "/projects/switch-on-creative/output.gif",
+    lightboxSrc: "/project-media/switch-on-creative/output-motion.webp",
     alt: "Professional portrait of a business executive in a suit with thoughtful expression",
     projectSlug: "switch-on-creative",
     featured: true,

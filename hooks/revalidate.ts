@@ -1,9 +1,11 @@
-import { revalidatePath } from "next/cache"
+import { revalidatePath, revalidateTag } from "next/cache"
 import type {
   CollectionAfterChangeHook,
   CollectionAfterDeleteHook,
   GlobalAfterChangeHook,
 } from "payload"
+
+import { CACHE_TAGS } from "@/lib/cache-tags"
 
 type RevalidationContext = {
   disableRevalidate?: boolean
@@ -17,11 +19,25 @@ const revalidatePaths = (paths: string[]) => {
   }
 }
 
+const revalidateTags = (tags: string[]) => {
+  for (const tag of tags) {
+    // Next 16 requires an explicit revalidation behaviour. Payload hooks run inside
+    // route handlers, so `updateTag` is not available and `{ expire: 0 }` is the
+    // documented way to expire cached entries immediately after an editor saves.
+    revalidateTag(tag, { expire: 0 })
+  }
+}
+
 const projectPath = (slug?: unknown) => (typeof slug === "string" && slug ? `/projects/${slug}` : undefined)
 const articlePath = (slug?: unknown) => (typeof slug === "string" && slug ? `/articles/${slug}` : undefined)
 
 export const revalidateProject: CollectionAfterChangeHook = ({ doc, previousDoc, req }) => {
-  if (shouldSkipRevalidate(req.context)) {
+  // Admin creation auto-saves an empty draft during render. No public page
+  // changed, and Next rejects revalidation inside that render.
+  if (
+    shouldSkipRevalidate(req.context) ||
+    (doc?._status !== "published" && previousDoc?._status !== "published")
+  ) {
     return doc
   }
 
@@ -38,6 +54,7 @@ export const revalidateProject: CollectionAfterChangeHook = ({ doc, previousDoc,
   }
 
   revalidatePaths(paths)
+  revalidateTags([CACHE_TAGS.projects])
   return doc
 }
 
@@ -47,11 +64,16 @@ export const revalidateProjectDelete: CollectionAfterDeleteHook = ({ doc, req })
   }
 
   revalidatePaths(["/", "/projects", projectPath(doc?.slug)].filter((path): path is string => Boolean(path)))
+  revalidateTags([CACHE_TAGS.projects])
   return doc
 }
 
 export const revalidateArticle: CollectionAfterChangeHook = ({ doc, previousDoc, req }) => {
-  if (shouldSkipRevalidate(req.context)) {
+  // Draft-only article saves have the same render-time autosave behavior.
+  if (
+    shouldSkipRevalidate(req.context) ||
+    (doc?._status !== "published" && previousDoc?._status !== "published")
+  ) {
     return doc
   }
 
@@ -86,6 +108,7 @@ export const revalidateMedia: CollectionAfterChangeHook = ({ doc, req }) => {
   }
 
   revalidatePaths(["/", "/projects"])
+  revalidateTags([CACHE_TAGS.projects])
   return doc
 }
 
@@ -104,5 +127,6 @@ export const revalidateHomePage: GlobalAfterChangeHook = ({ doc, req }) => {
   }
 
   revalidatePaths(["/"])
+  revalidateTags([CACHE_TAGS.projects])
   return doc
 }

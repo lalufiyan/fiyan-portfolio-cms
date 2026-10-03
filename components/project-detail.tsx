@@ -3,7 +3,8 @@ import Image from "next/image"
 import Link from "next/link"
 import type { ReactNode } from "react"
 
-import { portfolioProfile } from "@/components/portfolio-sidebar"
+import { fallbackSiteSettings } from "@/lib/site-settings"
+import { projectMediaVariantUrl } from "@/lib/media-url"
 import { ProjectRichTextRenderer } from "@/components/project-rich-text-renderer"
 import { ProjectGallery } from "@/components/ui/project-gallery"
 import { hasRichTextContent } from "@/lib/project-rich-text"
@@ -11,6 +12,7 @@ import type { Project, ProjectImage } from "@/lib/projects-cms"
 import { getProjectImages } from "@/utils/image-association"
 
 interface ProjectDetailProps {
+  contactEmail?: string
   project: Project
   images?: ProjectImage[]
 }
@@ -37,7 +39,8 @@ function DetailList({ items }: { items: string[] }) {
   )
 }
 
-export function ProjectDetail({ project, images: cmsImages }: ProjectDetailProps) {
+export function ProjectDetail({ contactEmail, project, images: cmsImages }: ProjectDetailProps) {
+  const email = contactEmail || fallbackSiteSettings.email
   const images = cmsImages ?? getProjectImages(project.slug)
   const heroImage = images[0]
   const secondaryImages = images.slice(1)
@@ -90,7 +93,12 @@ export function ProjectDetail({ project, images: cmsImages }: ProjectDetailProps
               <figure className="mb-12">
                 <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-neutral-100 outline outline-1 -outline-offset-1 outline-black/5">
                   <Image
-                    src={heroImage.detailSrc || heroImage.src || "/placeholder.svg"}
+                    src={
+                      heroImage.detailSrc ||
+                      projectMediaVariantUrl(heroImage.src, "detail") ||
+                      heroImage.src ||
+                      "/placeholder.svg"
+                    }
                     alt={heroImage.alt || project.title}
                     fill
                     sizes="(min-width: 1280px) 55vw, 100vw"
@@ -175,7 +183,7 @@ export function ProjectDetail({ project, images: cmsImages }: ProjectDetailProps
               </p>
               <div className="flex flex-col gap-2 sm:flex-row xl:flex-col">
                 <a
-                  href={`mailto:${portfolioProfile.email}`}
+                  href={`mailto:${email}`}
                   className="inline-flex items-center justify-center gap-2 rounded-full bg-black px-4 py-2.5 text-base font-semibold text-white transition hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black sm:py-2 sm:text-sm"
                 >
                   <Mail className="size-5 sm:size-4" aria-hidden="true" />

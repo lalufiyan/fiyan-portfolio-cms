@@ -1,10 +1,10 @@
 import "../globals.css"
 import { geistMonoFont, plusJakartaSans } from "../fonts"
 import type React from "react"
+import { PreviewLiveMode } from "@/components/preview-live-mode"
 import { SiteShell } from "@/components/site-shell"
 import { getSiteSettings } from "@/lib/site-settings"
 import type { Metadata } from "next"
-import { headers } from "next/headers"
 
 const safeUrl = (value: string) => {
   try {
@@ -85,14 +85,13 @@ export default async function FrontendLayout({
 }: {
   children: React.ReactNode
 }) {
-  const [requestHeaders, settings] = await Promise.all([headers(), getSiteSettings()])
-  const pathname = requestHeaders.get("x-pathname") || "/"
-  const hideSidebar = requestHeaders.get("x-preview-mode") === "live"
+  const settings = await getSiteSettings()
 
   return (
     <html lang="en" className={`${plusJakartaSans.variable} ${geistMonoFont.variable}`} suppressHydrationWarning>
       <body className={`${plusJakartaSans.className} flex flex-col min-h-screen`}>
-        <SiteShell hideSidebar={hideSidebar} pathname={pathname} settings={settings}>
+        <PreviewLiveMode />
+        <SiteShell settings={settings}>
           {children}
         </SiteShell>
       </body>

@@ -3,13 +3,10 @@
 import Image from "next/image"
 import Link from "next/link"
 import gsap from "gsap"
-import { ScrollToPlugin } from "gsap/ScrollToPlugin"
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import type { PointerEvent } from "react"
 
 import type { LandingProject, ProjectImage } from "@/lib/projects-cms"
-
-gsap.registerPlugin(ScrollToPlugin)
 
 const easeOut = "power3.out"
 const easeInOut = "power3.inOut"
@@ -20,6 +17,7 @@ interface HomeClientProps {
 
 interface LightboxImage {
   alt: string
+  animated?: boolean
   caption?: string
   src: string
 }
@@ -70,110 +68,28 @@ function useReducedMotionPreference() {
   )
 }
 
-const getSlideRevealTargets = (slide: HTMLElement) =>
-  Array.from(slide.querySelectorAll<HTMLElement>(revealTargetSelector))
+// A reveal is decorative: slides and their children are never hidden before observation.
+const animateSlide = (slide: HTMLElement) => {
+  const targets = Array.from(slide.querySelectorAll<HTMLElement>(revealTargetSelector))
+  if (targets.length === 0) return
 
-const prepareSlideForReveal = (slide: HTMLElement) => {
-  if (slide.dataset.revealState) {
-    return
-  }
-
-  const copy = Array.from(slide.querySelectorAll<HTMLElement>("[data-slide-copy]"))
-  const cards = Array.from(slide.querySelectorAll<HTMLElement>("[data-slide-card]"))
-
-  if (copy.length > 0) {
-    gsap.set(copy, { autoAlpha: 0, y: 22 })
-  }
-
-  if (cards.length > 0) {
-    gsap.set(cards, { autoAlpha: 0, y: 28, scale: 0.985 })
-  }
-
-  slide.dataset.revealState = "prepared"
-}
-
-const showSlideWithoutReveal = (slide: HTMLElement) => {
-  const targets = getSlideRevealTargets(slide)
-
-  if (targets.length > 0) {
-    gsap.killTweensOf(targets)
-    gsap.set(targets, { autoAlpha: 1, y: 0, scale: 1, clearProps: "opacity,visibility,transform" })
-  }
-
-  slide.dataset.revealState = "shown"
-}
-
-const getCurrentSlideIndex = (slides: HTMLElement[]) => {
-  const scrollContainer = slides[0]?.closest<HTMLElement>("[data-site-main]")
-  const containerTop = scrollContainer?.getBoundingClientRect().top ?? 0
-  let closestIndex = 0
-  let closestDistance = Number.POSITIVE_INFINITY
-
-  slides.forEach((slide, index) => {
-    const distance = Math.abs(slide.getBoundingClientRect().top - containerTop)
-
-    if (distance < closestDistance) {
-      closestDistance = distance
-      closestIndex = index
-    }
-  })
-
-  return closestIndex
-}
-
-const revealSlide = (slide: HTMLElement) => {
-  const copy = Array.from(slide.querySelectorAll<HTMLElement>("[data-slide-copy]"))
-  const cards = Array.from(slide.querySelectorAll<HTMLElement>("[data-slide-card]"))
-  const targets = [...copy, ...cards]
-
-  if (targets.length === 0) {
-    slide.dataset.revealState = "shown"
-    return
-  }
-
-  slide.dataset.revealState = "revealing"
-  gsap.killTweensOf(targets)
-
-  const timeline = gsap.timeline({
-    onComplete: () => showSlideWithoutReveal(slide),
-  })
-
-  if (copy.length > 0) {
-    timeline.to(
-      copy,
+  try {
+    gsap.fromTo(
+      targets,
+      { y: 18 },
       {
-        autoAlpha: 1,
         y: 0,
-        duration: 0.42,
-        stagger: 0.055,
+        duration: 0.45,
+        stagger: 0.035,
         ease: easeOut,
         overwrite: true,
+        onComplete: () => gsap.set(targets, { clearProps: "transform" }),
       },
-      0,
     )
+  } catch {
+    // Animation failure must never affect content visibility.
+    targets.forEach((target) => target.style.removeProperty("transform"))
   }
-
-  if (cards.length > 0) {
-    timeline.to(
-      cards,
-      {
-        autoAlpha: 1,
-        y: 0,
-        scale: 1,
-        duration: 0.52,
-        stagger: 0.045,
-        ease: easeOut,
-        overwrite: true,
-      },
-      0.08,
-    )
-  }
-
-  window.setTimeout(() => {
-    if (slide.dataset.revealState === "revealing") {
-      showSlideWithoutReveal(slide)
-    }
-  }, 900)
 }
 
 function GalleryImage({
@@ -230,13 +146,12 @@ function GalleryImage({
         aria-label={`Open ${image.alt}`}
       >
         <Image
-          src={image.detailSrc || image.thumbnailSrc || image.src || "/placeholder.svg"}
+          src={image.thumbnailSrc || image.src || "/placeholder.svg"}
           alt={image.alt}
           fill
           sizes="(min-width: 1280px) 22vw, (min-width: 768px) 45vw, 100vw"
           className="object-cover will-change-transform"
           ref={imageRef}
-          unoptimized
         />
         {image.caption && (
           <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 pb-3 pt-8 text-base text-white sm:text-sm">
@@ -259,6 +174,7 @@ function Lightbox({
 }) {
   const overlayRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
 
   const closeLightbox = useCallback(() => {
     if (prefersReducedMotion) {
@@ -297,9 +213,13 @@ function Lightbox({
       return
     }
 
+    closeButtonRef.current?.focus()
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         closeLightbox()
+      } else if (event.key === "Tab") {
+        event.preventDefault()
+        closeButtonRef.current?.focus()
       }
     }
 
@@ -345,6 +265,7 @@ function Lightbox({
       onClick={closeLightbox}
     >
       <button
+        ref={closeButtonRef}
         type="button"
         className="absolute right-6 top-6 z-[101] flex size-11 items-center justify-center rounded-full border border-white/15 bg-white/10 text-3xl leading-none text-white backdrop-blur transition-colors duration-150 ease-out hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white motion-reduce:transition-none"
         onClick={(event) => {
@@ -357,7 +278,7 @@ function Lightbox({
       </button>
       <figure ref={contentRef} className="relative max-h-[88vh] w-full max-w-6xl" onClick={(event) => event.stopPropagation()}>
         <div className="relative mx-auto aspect-[4/3] max-h-[78vh] overflow-hidden rounded-xl">
-          <Image src={image.src} alt={image.alt} fill sizes="92vw" className="object-contain" priority unoptimized />
+          <Image src={image.src} alt={image.alt} fill sizes="92vw" className="object-contain" unoptimized={image.animated} />
         </div>
         {image.caption && <figcaption className="mx-auto mt-4 max-w-3xl text-center text-base text-white/80">{image.caption}</figcaption>}
       </figure>
@@ -367,164 +288,88 @@ function Lightbox({
 
 export function HomeClient({ landingProjects }: HomeClientProps) {
   const rootRef = useRef<HTMLDivElement>(null)
-  const revealedSlidesRef = useRef<Set<number>>(new Set())
+  const revealedSlidesRef = useRef<Set<HTMLElement>>(new Set())
+  const lightboxTriggerRef = useRef<HTMLElement | null>(null)
   const [activeSlide, setActiveSlide] = useState(0)
-  const activeSlideRef = useRef(0)
   const [lightboxImage, setLightboxImage] = useState<LightboxImage | null>(null)
   const activeTheme = slideThemes[activeSlide % slideThemes.length]
   const isDarkIndicator = activeTheme?.key === "dark"
   const prefersReducedMotion = useReducedMotionPreference()
-
   useEffect(() => {
-    const slides = Array.from(document.querySelectorAll<HTMLElement>("[data-landing-slide]"))
-    const scrollRoot =
-      rootRef.current?.closest<HTMLElement>("[data-site-main]") ?? document.querySelector<HTMLElement>("[data-site-main]")
-    const currentSlideIndex = getCurrentSlideIndex(slides)
+    const slides = Array.from(rootRef.current?.querySelectorAll<HTMLElement>("[data-landing-slide]") ?? [])
+    const siteMain = rootRef.current?.closest<HTMLElement>("[data-site-main]")
+    const desktop = window.matchMedia("(min-width: 1024px)")
+    if (!slides.length || !("IntersectionObserver" in window)) return
 
-    revealedSlidesRef.current.clear()
+    let observer: IntersectionObserver | undefined
+    const observeSlides = () => {
+      observer?.disconnect()
+      const ratios = new Map<HTMLElement, number>()
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const slide = entry.target as HTMLElement
+            ratios.set(slide, entry.isIntersecting ? entry.intersectionRatio : 0)
+            if (entry.isIntersecting && !prefersReducedMotion && !revealedSlidesRef.current.has(slide)) {
+              revealedSlidesRef.current.add(slide)
+              animateSlide(slide)
+            }
+          }
 
-    slides.forEach((slide, index) => {
-      delete slide.dataset.revealState
-
-      if (prefersReducedMotion || index === currentSlideIndex) {
-        showSlideWithoutReveal(slide)
-        revealedSlidesRef.current.add(index)
-        return
-      }
-
-      prepareSlideForReveal(slide)
-    })
-
-    activeSlideRef.current = currentSlideIndex
-    setActiveSlide(currentSlideIndex)
-
-    const revealCurrentSlide = () => {
-      const index = getCurrentSlideIndex(slides)
-      const slide = slides[index]
-
-      if (activeSlideRef.current !== index) {
-        activeSlideRef.current = index
-        setActiveSlide(index)
-      }
-
-      if (prefersReducedMotion || !slide || revealedSlidesRef.current.has(index)) {
-        return
-      }
-
-      revealedSlidesRef.current.add(index)
-      revealSlide(slide)
-    }
-
-    let frameId = 0
-    const scheduleReveal = () => {
-      if (frameId !== 0) {
-        return
-      }
-
-      frameId = window.requestAnimationFrame(() => {
-        frameId = 0
-        revealCurrentSlide()
-      })
-    }
-
-    const getScrollPosition = () => scrollRoot?.scrollTop ?? window.scrollY
-    let lastScrollPosition = getScrollPosition()
-
-    const checkScrollPosition = () => {
-      const nextScrollPosition = getScrollPosition()
-
-      if (Math.abs(nextScrollPosition - lastScrollPosition) > 0.5) {
-        lastScrollPosition = nextScrollPosition
-        revealCurrentSlide()
-      }
-    }
-    const watchIntervalId = window.setInterval(checkScrollPosition, 80)
-
-    const listeners: Array<{
-      options?: AddEventListenerOptions
-      target: EventTarget
-      type: string
-    }> = [
-      { target: document, type: "scroll", options: { capture: true, passive: true } },
-      { target: window, type: "resize" },
-      { target: window, type: "scroll", options: { passive: true } },
-    ]
-
-    if (scrollRoot) {
-      listeners.push(
-        { target: scrollRoot, type: "scroll", options: { passive: true } },
-        { target: scrollRoot, type: "wheel", options: { passive: true } },
-        { target: scrollRoot, type: "touchmove", options: { passive: true } },
+          let closest = -1
+          let largestRatio = 0
+          slides.forEach((slide, index) => {
+            const ratio = ratios.get(slide) ?? 0
+            if (ratio > largestRatio) {
+              largestRatio = ratio
+              closest = index
+            }
+          })
+          if (closest !== -1) setActiveSlide((previous) => previous === closest ? previous : closest)
+        },
+        { root: desktop.matches ? siteMain ?? null : null, threshold: [0, 0.1, 0.25, 0.5, 0.75, 1] },
       )
+      slides.forEach((slide) => observer?.observe(slide))
     }
 
-    listeners.forEach(({ options, target, type }) => {
-      target.addEventListener(type, scheduleReveal, options)
-    })
-    scheduleReveal()
-
+    observeSlides()
+    desktop.addEventListener("change", observeSlides)
     return () => {
-      if (frameId !== 0) {
-        window.cancelAnimationFrame(frameId)
-      }
-
-      window.clearInterval(watchIntervalId)
-
-      listeners.forEach(({ options, target, type }) => {
-        target.removeEventListener(type, scheduleReveal, options)
+      desktop.removeEventListener("change", observeSlides)
+      observer?.disconnect()
+      slides.forEach((slide) => {
+        const targets = Array.from(slide.querySelectorAll<HTMLElement>(revealTargetSelector))
+        gsap.killTweensOf(targets)
+        targets.forEach((target) => target.style.removeProperty("transform"))
       })
     }
-  }, [landingProjects.length, prefersReducedMotion])
+  }, [landingProjects, prefersReducedMotion])
 
+  const closeLightbox = useCallback(() => {
+    setLightboxImage(null)
+    lightboxTriggerRef.current?.focus()
+  }, [])
   const openLightbox = (image: ProjectImage) => {
+    lightboxTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setLightboxImage({
       src: image.lightboxSrc || image.detailSrc || image.src,
       alt: image.alt,
+      animated: image.type === "video",
       caption: image.caption,
     })
   }
 
   const scrollToSlide = (index: number) => {
-    const target = document.querySelector<HTMLElement>(`[data-landing-slide="${index}"]`)
-    if (!target) {
-      return
-    }
-
-    const scrollContainer = target.closest<HTMLElement>("[data-site-main]")
-
-    if (prefersReducedMotion) {
-      if (scrollContainer) {
-        const targetTop =
-          target.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top + scrollContainer.scrollTop
-        scrollContainer.scrollTo({ top: targetTop, behavior: "auto" })
-        return
-      }
-
-      target.scrollIntoView({
-        behavior: "auto",
-        block: "start",
-      })
-      return
-    }
-
-    const scroller = scrollContainer || window
-    const scrollTarget = scrollContainer
-      ? target.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top + scrollContainer.scrollTop
-      : target
-
-    gsap.to(scroller, {
-      duration: 0.62,
-      ease: easeInOut,
-      scrollTo: {
-        y: scrollTarget,
-        autoKill: true,
-      },
+    const target = rootRef.current?.querySelector<HTMLElement>(`[data-landing-slide="${index}"]`)
+    target?.scrollIntoView({
+      behavior: prefersReducedMotion ? "instant" : "smooth",
+      block: "start",
     })
   }
 
   return (
     <div ref={rootRef} className="min-h-screen overflow-x-hidden bg-white text-neutral-950 antialiased">
-      <main className="min-w-0 flex-1 overflow-x-hidden">
+      <div className="min-w-0 flex-1 overflow-x-hidden">
         {landingProjects.map((project, index) => {
           const theme = slideThemes[index % slideThemes.length]
           const slideImages = project.images.slice(0, 4)
@@ -579,7 +424,7 @@ export function HomeClient({ landingProjects }: HomeClientProps) {
             </section>
           )
         })}
-      </main>
+      </div>
 
       {landingProjects.length > 0 && (
         <nav className="fixed right-6 top-1/2 z-50 hidden -translate-y-1/2 flex-col items-end gap-1 md:flex" aria-label="Project slide navigation">
@@ -608,7 +453,7 @@ export function HomeClient({ landingProjects }: HomeClientProps) {
 
       <Lightbox
         image={lightboxImage}
-        onClose={() => setLightboxImage(null)}
+        onClose={closeLightbox}
         prefersReducedMotion={prefersReducedMotion}
       />
     </div>

@@ -1,0 +1,77 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      # No production credentials in PR jobs: exercise the documented static fallback.
+      DATABASE_URL: ""
+      PAYLOAD_SECRET: "ci-local-only-secret-not-for-deployment"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm run lint
+      - name: Verify committed Payload types
+        run: |
+          pnpm run payload:types
+          git diff --exit-code -- payload-types.ts || { echo 'Payload types changed. Run pnpm run payload:types and commit payload-types.ts.'; exit 1; }
+      - run: pnpm run test:smoke
+      - run: pnpm run build
+        env:
+          CMS_STATIC_BUILD: "1"
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run test:e2e
+
+  database:
+    runs-on: ubuntu-latest
+    env:
+      # The rehearsal runner derives its own sibling databases from this URL and
+      # refuses to run against anything but a local host.
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      PAYLOAD_SECRET: "ci-database-rehearsal-secret-not-for-deployment"
+      NEXT_PUBLIC_SITE_URL: "http://127.0.0.1:3000"
+      # Dummy object-storage credentials: production config validation requires
+      # them, but the rehearsal never talks to R2.
+      R2_BUCKET: "unused-bucket"
+      R2_ENDPOINT: "http://127.0.0.1:9000"
+      R2_ACCESS_KEY_ID: "unused"
+      R2_SECRET_ACCESS_KEY: "unused"
+      R2_PUBLIC_URL: "http://127.0.0.1:9000"
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test:db

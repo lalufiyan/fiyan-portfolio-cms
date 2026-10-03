@@ -6,7 +6,7 @@
  * Normalizes a category string for consistent comparison
  * Trims whitespace and converts to lowercase
  */
-export function normalizeCategory(category: string): string {
+function normalizeCategory(category: string): string {
   return category.trim().toLowerCase()
 }
 
@@ -22,7 +22,7 @@ export function projectMatchesCategory(projectCategory: string, selectedCategory
  * Extract the final year from a year range or single year string
  * e.g., "2023-2024" returns 2024, "2025" returns 2025
  */
-export function extractFinalYear(yearString: string): number {
+function extractFinalYear(yearString: string): number {
   if (!yearString) return 0
   const years = yearString.split("-").map((y) => Number.parseInt(y.trim(), 10))
   return years[years.length - 1]

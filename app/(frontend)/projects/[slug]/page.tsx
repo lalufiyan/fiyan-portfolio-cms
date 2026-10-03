@@ -17,8 +17,6 @@ interface ProjectPageProps {
   }>
 }
 
-export const dynamic = "force-dynamic"
-
 export async function generateMetadata({ params, searchParams }: ProjectPageProps): Promise<Metadata> {
   const { slug } = await params
   const query = await searchParams
@@ -84,7 +82,11 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
   const query = await searchParams
   const draft = await draftMode()
   const isPreview = draft.isEnabled || isPreviewRequest(query?.preview)
-  const result = await getProjectWithImagesBySlug(slug, { draft: isPreview })
+  const cmsEnabled = Boolean(process.env.DATABASE_URL?.trim())
+  const [settings, result] = await Promise.all([
+    getSiteSettings(),
+    getProjectWithImagesBySlug(slug, { draft: isPreview }),
+  ])
 
   if (!result) {
     return notFound()
@@ -92,14 +94,16 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
 
   return (
     <>
-      <AdminBar
-        collectionLabels={{ plural: "Portfolio Projects", singular: "Portfolio Project" }}
-        collectionSlug="projects"
-        id={String(result.project.id)}
-        preview={isPreview}
-      />
-      {isPreview && <RefreshRouteOnSave />}
-      <ProjectDetail project={result.project} images={result.images} />
+      {cmsEnabled && (
+        <AdminBar
+          collectionLabels={{ plural: "Portfolio Projects", singular: "Portfolio Project" }}
+          collectionSlug="projects"
+          id={String(result.project.id)}
+          preview={isPreview}
+        />
+      )}
+      {isPreview && cmsEnabled && <RefreshRouteOnSave />}
+      <ProjectDetail contactEmail={settings.email} images={result.images} project={result.project} />
     </>
   )
 }

@@ -49,3 +49,8 @@
     opacity: 0.8;
   }
 }
+
+/* Payload live preview hides the portfolio sidebar inside the admin iframe. */
+html[data-preview-live] [data-portfolio-sidebar] {
+  display: none;
+}

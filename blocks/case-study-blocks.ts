@@ -1,6 +1,6 @@
 import type { Block } from "payload"
 
-export const imageFeatureBlock: Block = {
+const imageFeatureBlock: Block = {
   slug: "imageFeature",
   labels: {
     singular: "Image feature",
@@ -37,7 +37,7 @@ export const imageFeatureBlock: Block = {
   ],
 }
 
-export const metricsBlock: Block = {
+const metricsBlock: Block = {
   slug: "metrics",
   labels: {
     singular: "Metrics",
@@ -76,7 +76,7 @@ export const metricsBlock: Block = {
   ],
 }
 
-export const pullQuoteBlock: Block = {
+const pullQuoteBlock: Block = {
   slug: "pullQuote",
   labels: {
     singular: "Pull quote",
@@ -98,7 +98,7 @@ export const pullQuoteBlock: Block = {
   ],
 }
 
-export const calloutBlock: Block = {
+const calloutBlock: Block = {
   slug: "callout",
   labels: {
     singular: "Callout",
@@ -130,7 +130,7 @@ export const calloutBlock: Block = {
   ],
 }
 
-export const ctaBlock: Block = {
+const ctaBlock: Block = {
   slug: "cta",
   labels: {
     singular: "Call to action",

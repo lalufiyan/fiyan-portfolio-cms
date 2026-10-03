@@ -17,9 +17,5 @@ export const plusJakartaSans = {
   variable: geistSans.variable,
 }
 
-export const instrumentSerif = {
-  className: geistSans.className,
-  variable: geistSans.variable,
-}
 
 export const geistMonoFont = geistMono

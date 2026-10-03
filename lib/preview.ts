@@ -5,7 +5,7 @@ export type PreviewSearchParams = {
 
 export type PreviewMode = "live"
 
-const previewSecret = () => process.env.PAYLOAD_PREVIEW_SECRET || "1"
+const previewSecret = () => process.env.PAYLOAD_PREVIEW_SECRET || (process.env.NODE_ENV === "production" ? "" : "1")
 
 const appendPreviewMode = (path: string, previewMode?: PreviewMode) => {
   if (!previewMode) {
@@ -20,7 +20,7 @@ const appendPreviewMode = (path: string, previewMode?: PreviewMode) => {
 }
 
 export const generatePreviewPath = (path: string, options: { previewMode?: PreviewMode } = {}) => {
-  if (!path.startsWith("/")) {
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\") || !previewSecret()) {
     return null
   }
 

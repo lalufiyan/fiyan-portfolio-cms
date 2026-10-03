@@ -141,12 +141,13 @@ export const Projects: CollectionConfig = {
             },
             {
               name: "featured",
-              label: "Show as landing page slide",
+              label: "Featured (homepage fallback)",
               type: "checkbox",
               defaultValue: false,
               index: true,
               admin: {
-                description: "When enabled, this project appears in the homepage slide presentation.",
+                description:
+                  "Used on the homepage only when Home Page -> Landing page projects is empty and \"Use featured projects when empty\" is enabled. Selecting projects there always takes precedence.",
               },
             },
             {
